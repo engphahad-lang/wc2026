@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body { font-family: 'Tajawal', 'Cairo', Arial, sans-serif; }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+}
+
+@layer components {
+  .card {
+    @apply bg-navy-light rounded-2xl p-4 border border-white/10;
+  }
+  .btn-primary {
+    @apply bg-gold text-navy font-bold py-2 px-6 rounded-xl 
+           hover:bg-gold-light active:bg-gold-dark transition-colors
+           disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply border border-white/20 text-white py-2 px-4 rounded-xl
+           hover:bg-white/10 transition-colors;
+  }
+  .score-input {
+    @apply w-12 h-12 text-center text-xl font-bold rounded-xl
+           bg-navy border-2 border-white/20 focus:border-gold
+           outline-none transition-colors;
+  }
+  .badge-group {
+    @apply text-xs font-bold px-2 py-0.5 rounded-full bg-gold/20 text-gold;
+  }
+}
