@@ -25,7 +25,7 @@ export function isLocked(kickoffUtc: string): boolean {
 }
 
 export function getTimeUntilLock(kickoffUtc: string): string {
-  const lockTime = new Date(new Date(kickoffUtc).getTime() - 60 * 60 * 1000)
+  const lockTime = new Date(new Date(kickoffUtc).getTime() - 1 * 60 * 1000)
   const now = new Date()
   const diff = lockTime.getTime() - now.getTime()
   if (diff <= 0) return 'مغلق'
