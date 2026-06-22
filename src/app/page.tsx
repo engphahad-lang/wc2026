@@ -17,7 +17,7 @@ export default function HomePage() {
     async function load() {
       const [{ data: lb }, { data: parts }] = await Promise.all([
         supabase.from('leaderboard').select('*').order('rank'),
-        supabase.from('participants').select('id,name').order('name'),
+        supabase.from('participants').select('id,name,prev_pts').order('name'),
       ])
       setLeaderboard(lb || [])
       setParticipants(parts || [])
