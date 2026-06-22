@@ -7,12 +7,15 @@ export default function HomePage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [leaderboard, setLeaderboard]   = useState<LeaderboardRow[]>([])
   const [selected, setSelected]         = useState<string>('')
+  const [pin, setPin]                   = useState<string>('')
+  const [error, setError]               = useState<string>('')
   const [loading, setLoading]           = useState(true)
+  const [checking, setChecking]         = useState(false)
 
   useEffect(() => {
     async function load() {
       const [{ data: parts }, { data: lb }] = await Promise.all([
-        supabase.from('participants').select('*').order('name'),
+        supabase.from('participants').select('id,name,prev_pts').order('name'),
         supabase.from('leaderboard').select('*').order('rank'),
       ])
       setParticipants(parts || [])
@@ -21,6 +24,27 @@ export default function HomePage() {
     }
     load()
   }, [])
+
+  async function handleLogin() {
+    if (!selected || !pin) {
+      setError('اختر اسمك وأدخل الرمز')
+      return
+    }
+    setChecking(true)
+    setError('')
+    const { data } = await supabase
+      .from('participants')
+      .select('id,pin')
+      .eq('id', selected)
+      .single()
+
+    if (data && data.pin === pin.trim()) {
+      window.location.href = `/participant/${selected}`
+    } else {
+      setError('❌ الرمز غير صحيح')
+    }
+    setChecking(false)
+  }
 
   const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' }
 
@@ -46,7 +70,7 @@ export default function HomePage() {
           <h2 className="text-lg font-bold text-gold">⚽ اختر اسمك وسجّل توقعاتك</h2>
           <select
             value={selected}
-            onChange={e => setSelected(e.target.value)}
+            onChange={e => { setSelected(e.target.value); setError('') }}
             className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl
                        py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
           >
@@ -55,13 +79,28 @@ export default function HomePage() {
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
+
           {selected && (
-            <Link
-              href={`/participant/${selected}`}
-              className="btn-primary w-full text-center block text-lg animate-fade-in"
-            >
-              عرض التوقعات ←
-            </Link>
+            <div className="space-y-3 animate-fade-in">
+              <input
+                type="number"
+                value={pin}
+                onChange={e => { setPin(e.target.value); setError('') }}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                placeholder="أدخل رمزك المكوّن من 4 أرقام"
+                maxLength={4}
+                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl
+                           py-3 px-4 text-white text-center text-xl tracking-widest outline-none transition-colors"
+              />
+              {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+              <button
+                onClick={handleLogin}
+                disabled={checking || pin.length < 4}
+                className="btn-primary w-full text-lg"
+              >
+                {checking ? '⏳ جاري التحقق...' : 'دخول ←'}
+              </button>
+            </div>
           )}
         </div>
 
@@ -70,7 +109,6 @@ export default function HomePage() {
             <h2 className="text-lg font-bold text-gold">📊 الترتيب العام</h2>
             <span className="text-xs text-white/40">النقاط السابقة + الموقع</span>
           </div>
-
           {loading ? (
             <div className="text-center py-8 text-white/40">جاري التحميل...</div>
           ) : (
