@@ -20,7 +20,7 @@ export function formatKuwaitTime(utcStr: string): string {
 
 export function isLocked(kickoffUtc: string): boolean {
   const kickoff = new Date(kickoffUtc)
-  const lockTime = new Date(kickoff.getTime() - 60 * 60 * 1000) // 1 hour before
+  const lockTime = new Date(kickoff.getTime() - 1 * 60 * 1000) // 1 minute before
   return new Date() >= lockTime
 }
 
