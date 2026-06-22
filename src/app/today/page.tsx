@@ -117,7 +117,7 @@ export default function TodayPage() {
                                 <td className="py-2 px-2 text-center">
                                   {pred ? (
                                     <span className="bg-navy px-2 py-0.5 rounded-lg font-black text-gold text-sm">
-                                      {pred.pred_score1}-{pred.pred_score2}
+                                      {pred.pred_score2}-{pred.pred_score1}
                                     </span>
                                   ) : (
                                     <span className="text-white/20 text-xs">—</span>
