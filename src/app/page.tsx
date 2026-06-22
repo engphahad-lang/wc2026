@@ -102,7 +102,10 @@ export default function HomePage() {
               </button>
             </div>
           )}
-        </div>
+         </div>
+        <Link href="/today" className="btn-ghost w-full text-center block text-sm">
+          📅 توقعات مباريات اليوم
+        </Link>
 
         <div className="card space-y-3">
           <div className="flex items-center justify-between">
