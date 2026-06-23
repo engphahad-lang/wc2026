@@ -13,11 +13,17 @@ export default function AdminPage() {
   const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
   const [saving, setSaving]   = useState<Record<number, boolean>>({})
   const [msg, setMsg]         = useState('')
-  const [activeTab, setActiveTab] = useState<'results' | 'predictions'>('results')
+  const [activeTab, setActiveTab] = useState<'results' | 'predictions' | 'manual'>('results')
   const [selectedParticipant, setSelectedParticipant] = useState<number | null>(null)
   const [participantPredictions, setParticipantPredictions] = useState<Record<number, Prediction>>({})
   const [predDrafts, setPredDrafts] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
   const [savingPred, setSavingPred] = useState<Record<number, boolean>>({})
+
+  // Manual points state
+  const [manualParticipant, setManualParticipant] = useState<number | null>(null)
+  const [manualPredictions, setManualPredictions] = useState<Record<number, Prediction>>({})
+  const [manualPts, setManualPts] = useState<Record<number, { pts_result: string; pts_scorer: string }>>({})
+  const [savingManual, setSavingManual] = useState<Record<number, boolean>>({})
 
   async function loadMatches() {
     const { data } = await supabase.from('matches').select('*').order('match_num')
@@ -38,14 +44,23 @@ export default function AdminPage() {
 
   async function loadParticipantPredictions(participantId: number) {
     const { data } = await supabase
-      .from('predictions')
-      .select('*')
-      .eq('participant_id', participantId)
+      .from('predictions').select('*').eq('participant_id', participantId)
     if (data) {
       const map: Record<number, Prediction> = {}
       data.forEach(p => { map[p.match_id] = p })
       setParticipantPredictions(map)
       setPredDrafts({})
+    }
+  }
+
+  async function loadManualPredictions(participantId: number) {
+    const { data } = await supabase
+      .from('predictions').select('*').eq('participant_id', participantId)
+    if (data) {
+      const map: Record<number, Prediction> = {}
+      data.forEach(p => { map[p.match_id] = p })
+      setManualPredictions(map)
+      setManualPts({})
     }
   }
 
@@ -73,8 +88,8 @@ export default function AdminPage() {
       }
     }
     setMsg(`✅ تم حفظ نتيجة مباراة ${match.match_num} وتحديث النقاط`)
-setSaving(prev => ({ ...prev, [match.id]: false }))
-setTimeout(() => window.location.reload(), 1500)
+    setSaving(prev => ({ ...prev, [match.id]: false }))
+    setTimeout(() => window.location.reload(), 1500)
   }
 
   async function toggleLock(match: Match) {
@@ -111,16 +126,10 @@ setTimeout(() => window.location.reload(), 1500)
         const pts = calcPoints(s1, s2, match.score1, match.score2,
                                draft.scorer || '', match.scorer || '', match.stage)
         await supabase.from('predictions')
-          .update({ 
-  pred_score1: s1,
-  pred_score2: s2,
-  pred_scorer: draft.scorer || null,
-  pts_result: pts.pts_result,
-  pts_scorer: pts.pts_scorer,
-  total_pts: pts.total_pts
-})
-
-          .eq('id', existing.id)
+          .update({
+            pred_score1: s1, pred_score2: s2, pred_scorer: draft.scorer || null,
+            pts_result: pts.pts_result, pts_scorer: pts.pts_scorer, total_pts: pts.total_pts
+          }).eq('id', existing.id)
       } else {
         await supabase.from('predictions').update(payload).eq('id', existing.id)
       }
@@ -130,6 +139,24 @@ setTimeout(() => window.location.reload(), 1500)
     await loadParticipantPredictions(selectedParticipant)
     setSavingPred(prev => ({ ...prev, [match.id]: false }))
     setMsg(`✅ تم تعديل توقع المشارك للمباراة ${match.match_num}`)
+    setTimeout(() => setMsg(''), 3000)
+  }
+
+  async function saveManualPoints(predId: number, matchId: number) {
+    const pts = manualPts[matchId]
+    if (!pts) return
+    const pts_result = parseInt(pts.pts_result)
+    const pts_scorer = parseInt(pts.pts_scorer)
+    if (isNaN(pts_result) || isNaN(pts_scorer)) return
+    setSavingManual(prev => ({ ...prev, [matchId]: true }))
+    await supabase.from('predictions').update({
+      pts_result,
+      pts_scorer,
+      total_pts: pts_result + pts_scorer
+    }).eq('id', predId)
+    await loadManualPredictions(manualParticipant!)
+    setSavingManual(prev => ({ ...prev, [matchId]: false }))
+    setMsg('✅ تم تعديل النقاط يدوياً')
     setTimeout(() => setMsg(''), 3000)
   }
 
@@ -168,8 +195,7 @@ setTimeout(() => window.location.reload(), 1500)
   }
 
   const unplayed = matches.filter(m => m.score1 === null && m.score2 === null)
-const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
-
+  const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
 
   return (
     <div className="min-h-screen bg-navy">
@@ -178,20 +204,27 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
           <h1 className="text-lg font-black text-gold">⚙️ لوحة الإدارة</h1>
           <span className="text-xs text-white/40">{matches.length} مباراة · {played.length} مُلعبة</span>
         </div>
-        <div className="max-w-3xl mx-auto px-4 pb-3 flex gap-2">
+        <div className="max-w-3xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('results')}
-            className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
               ${activeTab === 'results' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
           >
             📊 النتائج
           </button>
           <button
             onClick={() => setActiveTab('predictions')}
-            className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
               ${activeTab === 'predictions' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
           >
-            ✏️ تعديل توقعات المشاركين
+            ✏️ تعديل التوقعات
+          </button>
+          <button
+            onClick={() => setActiveTab('manual')}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
+              ${activeTab === 'manual' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
+          >
+            🔢 تعديل النقاط
           </button>
         </div>
       </header>
@@ -209,7 +242,7 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
             <section>
               <h2 className="text-gold font-bold mb-3">⏳ مباريات تحتاج نتيجة ({unplayed.length})</h2>
               <div className="space-y-3">
-                {unplayed.slice(0, 20).map(match => {
+                {unplayed.map(match => {
                   const r = getResult(match)
                   return (
                     <div key={match.id} className="card space-y-3">
@@ -238,7 +271,7 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                       </div>
                       <input type="text" value={r.scorer}
                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:''}), scorer: e.target.value}}))}
-                        placeholder="مسجلو الأهداف (مثال: مبابي هالاند)"
+                        placeholder="مسجلو الأهداف"
                         className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
                       />
                       <button
@@ -311,8 +344,7 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                   setSelectedParticipant(id)
                   loadParticipantPredictions(id)
                 }}
-                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl
-                           py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
+                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
               >
                 <option value="">— اختر مشارك —</option>
                 {participants.map(p => (
@@ -336,9 +368,7 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                       <div className="flex items-center gap-2 text-sm font-bold">
                         <span className="flex-1 text-right">{match.team1}</span>
                         {match.score1 !== null ? (
-                          <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold">
-                            {match.score1}-{match.score2}
-                          </span>
+                          <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold">{match.score1}-{match.score2}</span>
                         ) : (
                           <span className="text-white/30 px-2">🆚</span>
                         )}
@@ -355,9 +385,7 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                           )}
                         </div>
                       )}
-                      {!hasPred && (
-                        <div className="text-xs text-white/30 text-center">لا يوجد توقع مسجل</div>
-                      )}
+                      {!hasPred && <div className="text-xs text-white/30 text-center">لا يوجد توقع مسجل</div>}
                       <details>
                         <summary className="text-xs text-gold/60 cursor-pointer hover:text-gold">
                           {hasPred ? '✏️ تعديل التوقع' : '➕ إضافة توقع'}
@@ -365,34 +393,17 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                         <div className="mt-3 space-y-2">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-white/50 w-16 text-right">{match.team1}</span>
-                            <input
-                              type="number" min="0" max="20"
-                              value={draft.s1}
-                              onChange={e => setPredDrafts(prev => ({
-                                ...prev,
-                                [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s1: e.target.value }
-                              }))}
-                              className="score-input" placeholder="0"
-                            />
+                            <input type="number" min="0" max="20" value={draft.s1}
+                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s1: e.target.value }}))}
+                              className="score-input" placeholder="0" />
                             <span className="text-white/30">-</span>
-                            <input
-                              type="number" min="0" max="20"
-                              value={draft.s2}
-                              onChange={e => setPredDrafts(prev => ({
-                                ...prev,
-                                [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s2: e.target.value }
-                              }))}
-                              className="score-input" placeholder="0"
-                            />
+                            <input type="number" min="0" max="20" value={draft.s2}
+                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s2: e.target.value }}))}
+                              className="score-input" placeholder="0" />
                             <span className="text-xs text-white/50 w-16">{match.team2}</span>
                           </div>
-                          <input
-                            type="text"
-                            value={draft.scorer}
-                            onChange={e => setPredDrafts(prev => ({
-                              ...prev,
-                              [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), scorer: e.target.value }
-                            }))}
+                          <input type="text" value={draft.scorer}
+                            onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), scorer: e.target.value }}))}
                             placeholder="مسجل الهدف / الكابتن (اختياري)"
                             className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
                           />
@@ -405,6 +416,83 @@ const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
                           </button>
                         </div>
                       </details>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'manual' && (
+          <section className="space-y-4">
+            <h2 className="text-gold font-bold">🔢 تعديل النقاط يدوياً</h2>
+            <div className="card space-y-3">
+              <label className="text-sm text-white/70">اختر المشارك:</label>
+              <select
+                value={manualParticipant || ''}
+                onChange={e => {
+                  const id = Number(e.target.value)
+                  setManualParticipant(id)
+                  loadManualPredictions(id)
+                }}
+                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
+              >
+                <option value="">— اختر مشارك —</option>
+                {participants.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {manualParticipant && (
+              <div className="space-y-3">
+                {matches.filter(m => manualPredictions[m.id]).map(match => {
+                  const pred = manualPredictions[match.id]
+                  if (!pred) return null
+                  const draft = manualPts[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }
+                  return (
+                    <div key={match.id} className="card space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="badge-group">م{match.match_num} · {match.group_name}</span>
+                        <span className="text-xs text-white/40">{match.team1} vs {match.team2}</span>
+                      </div>
+                      <div className="text-xs text-white/50 text-center">
+                        توقع: <span className="text-white/70">{pred.pred_score1}-{pred.pred_score2}</span>
+                        {pred.pred_scorer && <span className="mr-2">· {pred.pred_scorer}</span>}
+                        · نقاط حالية: <span className="text-emerald-400 font-bold">{pred.total_pts}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs text-white/50">نقاط النتيجة</label>
+                          <input type="number" min="0" max="10"
+                            value={draft.pts_result}
+                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_result: e.target.value }}))}
+                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-white/50">نقاط الهداف</label>
+                          <input type="number" min="0" max="10"
+                            value={draft.pts_scorer}
+                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_scorer: e.target.value }}))}
+                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1"
+                          />
+                        </div>
+                        <div className="flex-1 text-center">
+                          <label className="text-xs text-white/50">المجموع</label>
+                          <div className="text-gold font-black text-xl mt-2">
+                            {(parseInt(draft.pts_result) || 0) + (parseInt(draft.pts_scorer) || 0)}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => saveManualPoints(pred.id, match.id)}
+                        disabled={savingManual[match.id]}
+                        className="btn-primary w-full text-sm"
+                      >
+                        {savingManual[match.id] ? '⏳ جاري الحفظ...' : '💾 حفظ النقاط'}
+                      </button>
                     </div>
                   )
                 })}
