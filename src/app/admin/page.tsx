@@ -73,9 +73,8 @@ export default function AdminPage() {
       }
     }
     setMsg(`✅ تم حفظ نتيجة مباراة ${match.match_num} وتحديث النقاط`)
-    await loadMatches()
-    setSaving(prev => ({ ...prev, [match.id]: false }))
-    setTimeout(() => setMsg(''), 3000)
+setSaving(prev => ({ ...prev, [match.id]: false }))
+setTimeout(() => window.location.reload(), 1500)
   }
 
   async function toggleLock(match: Match) {
