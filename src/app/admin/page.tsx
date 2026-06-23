@@ -167,8 +167,9 @@ setTimeout(() => window.location.reload(), 1500)
     )
   }
 
-  const unplayed = matches.filter(m => m.score1 === null)
-  const played   = matches.filter(m => m.score1 !== null)
+  const unplayed = matches.filter(m => m.score1 === null && m.score2 === null)
+const played   = matches.filter(m => m.score1 !== null || m.score2 !== null)
+
 
   return (
     <div className="min-h-screen bg-navy">
