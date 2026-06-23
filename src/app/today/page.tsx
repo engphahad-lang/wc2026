@@ -14,11 +14,11 @@ export default function TodayPage() {
     async function load() {
       // Get today's matches (Kuwait time = UTC+3)
       const now = new Date()
-      const kuwaitOffset = 3 * 60 * 60 * 1000
-      const kuwaitNow = new Date(now.getTime() + kuwaitOffset)
-      const todayStart = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate()) - kuwaitOffset - 24 * 60 * 60 * 1000)
+const kuwaitOffset = 3 * 60 * 60 * 1000
+const kuwaitNow = new Date(now.getTime() + kuwaitOffset)
+const todayStart = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() - 1) - kuwaitOffset)
+const todayEnd   = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() + 1) - kuwaitOffset)
 
-      const todayEnd   = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000)
 
       const [{ data: m }, { data: p }, { data: pr }] = await Promise.all([
         supabase.from('matches').select('*')
