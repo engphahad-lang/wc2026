@@ -112,7 +112,15 @@ export default function AdminPage() {
         const pts = calcPoints(s1, s2, match.score1, match.score2,
                                draft.scorer || '', match.scorer || '', match.stage)
         await supabase.from('predictions')
-          .update({ ...payload, ...pts })
+          .update({ 
+  pred_score1: s1,
+  pred_score2: s2,
+  pred_scorer: draft.scorer || null,
+  pts_result: pts.pts_result,
+  pts_scorer: pts.pts_scorer,
+  total_pts: pts.total_pts
+})
+
           .eq('id', existing.id)
       } else {
         await supabase.from('predictions').update(payload).eq('id', existing.id)
