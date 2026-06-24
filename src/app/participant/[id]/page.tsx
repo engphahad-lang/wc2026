@@ -97,8 +97,11 @@ export default function ParticipantPage() {
     const p = predictions[match.id]
     return {
       s1: drafts[match.id] !== undefined ? (d?.s1 ?? '') : (p ? String(p.pred_score1) : ''),
-s2: drafts[match.id] !== undefined ? (d?.s2 ?? '') : (p ? String(p.pred_score2) : ''),
-scorer: drafts[match.id] !== undefined ? (d?.scorer ?? '') : (p?.pred_scorer || ''),
+      s2: drafts[match.id] !== undefined ? (d?.s2 ?? '') : (p ? String(p.pred_score2) : ''),
+      scorer: drafts[match.id] !== undefined ? (d?.scorer ?? '') : (p?.pred_scorer || ''),
+    }
+  }
+
 
 
 
