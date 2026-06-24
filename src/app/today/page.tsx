@@ -26,7 +26,8 @@ const todayEnd   = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUT
           .lt('kickoff_utc', todayEnd.toISOString())
           .order('kickoff_utc'),
         supabase.from('participants').select('*').order('name'),
-        supabase.from('predictions').select('*'),
+        supabase.from('predictions').select('*').limit(10000),
+
       ])
 
       setMatches(m || [])
