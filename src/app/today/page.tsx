@@ -12,35 +12,40 @@ export default function TodayPage() {
 
   useEffect(() => {
     async function load() {
-      // Get today's matches (Kuwait time = UTC+3)
-      const now = new Date()
-const kuwaitOffset = 3 * 60 * 60 * 1000
-const kuwaitNow = new Date(now.getTime() + kuwaitOffset)
-const todayStart = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() - 1) - kuwaitOffset)
-const todayEnd   = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() + 1) - kuwaitOffset)
+  const now = new Date()
+  const kuwaitOffset = 3 * 60 * 60 * 1000
+  const kuwaitNow = new Date(now.getTime() + kuwaitOffset)
+  const todayStart = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() - 1) - kuwaitOffset)
+  const todayEnd   = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() + 1) - kuwaitOffset)
 
+  const [{ data: m }, { data: p }] = await Promise.all([
+    supabase.from('matches').select('*')
+      .gte('kickoff_utc', todayStart.toISOString())
+      .lt('kickoff_utc', todayEnd.toISOString())
+      .order('kickoff_utc'),
+    supabase.from('participants').select('*').order('name'),
+  ])
 
-      const [{ data: m }, { data: p }, { data: pr }] = await Promise.all([
-        supabase.from('matches').select('*')
-          .gte('kickoff_utc', todayStart.toISOString())
-          .lt('kickoff_utc', todayEnd.toISOString())
-          .order('kickoff_utc'),
-        supabase.from('participants').select('*').order('name'),
-        supabase.from('predictions').select('*').limit(10000),
+  setMatches(m || [])
+  setParticipants(p || [])
 
-      ])
+  const matchIds = (m || []).map(match => match.id)
+  if (matchIds.length > 0) {
+    const { data: pr } = await supabase
+      .from('predictions')
+      .select('*')
+      .in('match_id', matchIds)
 
-      setMatches(m || [])
-      setParticipants(p || [])
+    const map: Record<string, Prediction> = {}
+    ;(pr || []).forEach(pred => {
+      map[`${pred.participant_id}_${pred.match_id}`] = pred
+    })
+    setPredictions(map)
+  }
 
-      // Map predictions by participant_id + match_id
-      const map: Record<string, Prediction> = {}
-      ;(pr || []).forEach(pred => {
-        map[`${pred.participant_id}_${pred.match_id}`] = pred
-      })
-      setPredictions(map)
-      setLoading(false)
-    }
+  setLoading(false)
+}
+
     load()
   }, [])
 
