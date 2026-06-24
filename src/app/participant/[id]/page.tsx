@@ -96,11 +96,12 @@ export default function ParticipantPage() {
     const d = drafts[match.id]
     const p = predictions[match.id]
     return {
-      s1: d?.s1 ?? (p ? String(p.pred_score1) : ''),
-      s2: d?.s2 ?? (p ? String(p.pred_score2) : ''),
-      scorer: d?.scorer ?? (p?.pred_scorer || ''),
+      s1: d?.s1 !== undefined ? d.s1 : (p ? String(p.pred_score1) : ''),
+      s2: d?.s2 !== undefined ? d.s2 : (p ? String(p.pred_score2) : ''),
+      scorer: d?.scorer !== undefined ? d.scorer : (p?.pred_scorer || ''),
     }
   }
+
 
   const totalSitePts = Object.values(predictions).reduce((s, p) => s + p.total_pts, 0)
   const groups_list = Object.keys(groups).filter(g => g.length === 1).sort()
