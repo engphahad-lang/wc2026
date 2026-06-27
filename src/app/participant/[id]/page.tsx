@@ -1,11 +1,18 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { supabase, type Match, type Prediction, type Participant } from '@/lib/supabase'
-import { isLocked, getTimeUntilLock, formatKuwaitTime, calcPoints } from '@/lib/utils'
+import { isLocked, getTimeUntilLock, formatKuwaitTime } from '@/lib/utils'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 
 type GroupedMatches = Record<string, Match[]>
+type TournamentPred = {
+  id: number
+  pred_champion: string
+  pred_runner_up: string
+  pred_top_scorer: string
+  pred_best_player: string
+}
 
 export default function ParticipantPage() {
   const params = useParams()
@@ -18,18 +25,19 @@ export default function ParticipantPage() {
   const [saving, setSaving]           = useState<Record<number, boolean>>({})
   const [saved, setSaved]             = useState<Record<number, boolean>>({})
   const [activeGroup, setActiveGroup] = useState<string>('open')
-  const [now, setNow]                 = useState(new Date())
+  const [tournamentPred, setTournamentPred] = useState<TournamentPred | null>(null)
 
   useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 30000)
+    const t = setInterval(() => {}, 30000)
     return () => clearInterval(t)
   }, [])
 
   const load = useCallback(async () => {
-    const [{ data: p }, { data: m }, { data: pr }] = await Promise.all([
+    const [{ data: p }, { data: m }, { data: pr }, { data: tp }] = await Promise.all([
       supabase.from('participants').select('*').eq('id', participantId).single(),
       supabase.from('matches').select('*').order('match_num'),
       supabase.from('predictions').select('*').eq('participant_id', participantId),
+      supabase.from('tournament_predictions').select('*').eq('participant_id', participantId).single(),
     ])
     if (p) setParticipant(p)
     if (m) setMatches(m)
@@ -38,11 +46,11 @@ export default function ParticipantPage() {
       pr.forEach(x => { map[x.match_id] = x })
       setPredictions(map)
     }
+    if (tp) setTournamentPred(tp)
   }, [participantId])
 
   useEffect(() => { load() }, [load])
 
-  // Group matches
   const groups: GroupedMatches = {}
   const openMatches: Match[] = []
   matches.forEach(m => {
@@ -102,15 +110,11 @@ export default function ParticipantPage() {
     }
   }
 
-
-
-
   const totalSitePts = Object.values(predictions).reduce((s, p) => s + p.total_pts, 0)
   const groups_list = Object.keys(groups).filter(g => g.length === 1).sort()
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-navy to-pitch">
-      {/* Header */}
       <header className="bg-navy border-b border-gold/30 sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <Link href="/" className="text-white/60 hover:text-white text-xl">←</Link>
@@ -125,6 +129,36 @@ export default function ParticipantPage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-4">
+
+        {/* Tournament predictions card */}
+        {tournamentPred && (
+          <div className="card space-y-3 mb-4 border-gold/30">
+            <h2 className="text-gold font-bold text-sm">🏆 توقعات البطولة</h2>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-white/40 mb-1">🥇 البطل</div>
+                <div className="font-bold text-white">{tournamentPred.pred_champion}</div>
+                <div className="text-gold text-xs mt-1">20 نقطة</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-white/40 mb-1">🥈 الوصيف</div>
+                <div className="font-bold text-white">{tournamentPred.pred_runner_up}</div>
+                <div className="text-gold text-xs mt-1">10 نقاط</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-white/40 mb-1">⚽ الهداف</div>
+                <div className="font-bold text-white">{tournamentPred.pred_top_scorer}</div>
+                <div className="text-gold text-xs mt-1">15 نقطة</div>
+              </div>
+              <div className="bg-white/5 rounded-xl p-3">
+                <div className="text-white/40 mb-1">⭐ أفضل لاعب</div>
+                <div className="font-bold text-white">{tournamentPred.pred_best_player}</div>
+                <div className="text-gold text-xs mt-1">10 نقاط</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide">
           <button
@@ -167,7 +201,6 @@ export default function ParticipantPage() {
                   <div key={match.id}
                     className={`card space-y-3 ${played ? 'border-white/10' : locked ? 'border-red-500/30' : 'border-gold/30'}`}
                   >
-                    {/* Match header */}
                     <div className="flex items-center justify-between">
                       <span className="badge-group">مجموعة {match.group_name} · م{match.match_num}</span>
                       {!locked && !played && (
@@ -181,7 +214,6 @@ export default function ParticipantPage() {
                       )}
                     </div>
 
-                    {/* Teams + score */}
                     <div className="flex items-center gap-2">
                       <span className="flex-1 text-right font-bold text-sm">{match.team1}</span>
                       {played ? (
@@ -198,7 +230,6 @@ export default function ParticipantPage() {
                       <div className="text-xs text-white/40 text-center">⚽ {match.scorer}</div>
                     )}
 
-                    {/* Prediction section */}
                     {played ? (
                       pred ? (
                         <div className={`rounded-xl p-2.5 text-sm text-center
@@ -223,7 +254,6 @@ export default function ParticipantPage() {
                         <div className="text-center text-xs text-red-400/60 py-1">🔒 لم تسجل توقعاً قبل الإغلاق</div>
                       )
                     ) : (
-                      /* Open prediction form */
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <input
