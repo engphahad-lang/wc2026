@@ -5,6 +5,15 @@ import { formatKuwaitTime, calcPoints } from '@/lib/utils'
 
 const ADMIN_PIN = process.env.NEXT_PUBLIC_ADMIN_PIN || '1234'
 
+type TournamentPred = {
+  id: number
+  participant_id: number
+  pred_champion: string
+  pred_runner_up: string
+  pred_top_scorer: string
+  pred_best_player: string
+}
+
 export default function AdminPage() {
   const [pin, setPin]         = useState('')
   const [authed, setAuthed]   = useState(false)
@@ -13,17 +22,22 @@ export default function AdminPage() {
   const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
   const [saving, setSaving]   = useState<Record<number, boolean>>({})
   const [msg, setMsg]         = useState('')
-  const [activeTab, setActiveTab] = useState<'results' | 'predictions' | 'manual'>('results')
+  const [activeTab, setActiveTab] = useState<'results' | 'predictions' | 'manual' | 'tournament'>('results')
   const [selectedParticipant, setSelectedParticipant] = useState<number | null>(null)
   const [participantPredictions, setParticipantPredictions] = useState<Record<number, Prediction>>({})
   const [predDrafts, setPredDrafts] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
   const [savingPred, setSavingPred] = useState<Record<number, boolean>>({})
-
-  // Manual points state
   const [manualParticipant, setManualParticipant] = useState<number | null>(null)
   const [manualPredictions, setManualPredictions] = useState<Record<number, Prediction>>({})
   const [manualPts, setManualPts] = useState<Record<number, { pts_result: string; pts_scorer: string }>>({})
   const [savingManual, setSavingManual] = useState<Record<number, boolean>>({})
+
+  // Tournament state
+  const [tournamentPreds, setTournamentPreds] = useState<TournamentPred[]>([])
+  const [tournamentResult, setTournamentResult] = useState({
+    champion: '', runner_up: '', top_scorer: '', best_player: ''
+  })
+  const [savingTournament, setSavingTournament] = useState(false)
 
   async function loadMatches() {
     const { data } = await supabase.from('matches').select('*').order('match_num')
@@ -35,10 +49,16 @@ export default function AdminPage() {
     setParticipants(data || [])
   }
 
+  async function loadTournamentPreds() {
+    const { data } = await supabase.from('tournament_predictions').select('*')
+    setTournamentPreds(data || [])
+  }
+
   useEffect(() => {
     if (authed) {
       loadMatches()
       loadParticipants()
+      loadTournamentPreds()
     }
   }, [authed])
 
@@ -90,6 +110,35 @@ export default function AdminPage() {
     setMsg(`✅ تم حفظ نتيجة مباراة ${match.match_num} وتحديث النقاط`)
     setSaving(prev => ({ ...prev, [match.id]: false }))
     setTimeout(() => window.location.reload(), 1500)
+  }
+
+  async function saveTournamentResults() {
+    if (!tournamentResult.champion) return
+    setSavingTournament(true)
+
+    // حساب نقاط كل مشارك
+    for (const tp of tournamentPreds) {
+      let bonus = 0
+      if (tp.pred_champion?.toLowerCase() === tournamentResult.champion.toLowerCase()) bonus += 20
+      if (tp.pred_runner_up?.toLowerCase() === tournamentResult.runner_up.toLowerCase()) bonus += 10
+      if (tp.pred_top_scorer?.toLowerCase() === tournamentResult.top_scorer.toLowerCase()) bonus += 15
+      if (tp.pred_best_player?.toLowerCase() === tournamentResult.best_player.toLowerCase()) bonus += 10
+
+      if (bonus > 0) {
+        // أضف النقاط لـ prev_pts
+        const participant = participants.find(p => p.id === tp.participant_id)
+        if (participant) {
+          await supabase.from('participants').update({
+            prev_pts: (participant.prev_pts || 0) + bonus
+          }).eq('id', tp.participant_id)
+        }
+      }
+    }
+
+    setMsg('✅ تم حساب نقاط توقعات البطولة وإضافتها')
+    setSavingTournament(false)
+    await loadParticipants()
+    setTimeout(() => setMsg(''), 4000)
   }
 
   async function toggleLock(match: Match) {
@@ -150,9 +199,7 @@ export default function AdminPage() {
     if (isNaN(pts_result) || isNaN(pts_scorer)) return
     setSavingManual(prev => ({ ...prev, [matchId]: true }))
     await supabase.from('predictions').update({
-      pts_result,
-      pts_scorer,
-      total_pts: pts_result + pts_scorer
+      pts_result, pts_scorer, total_pts: pts_result + pts_scorer
     }).eq('id', predId)
     await loadManualPredictions(manualParticipant!)
     setSavingManual(prev => ({ ...prev, [matchId]: false }))
@@ -205,26 +252,21 @@ export default function AdminPage() {
           <span className="text-xs text-white/40">{matches.length} مباراة · {played.length} مُلعبة</span>
         </div>
         <div className="max-w-3xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('results')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
-              ${activeTab === 'results' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
-          >
+          <button onClick={() => setActiveTab('results')}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'results' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
             📊 النتائج
           </button>
-          <button
-            onClick={() => setActiveTab('predictions')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
-              ${activeTab === 'predictions' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
-          >
+          <button onClick={() => setActiveTab('predictions')}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'predictions' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
             ✏️ تعديل التوقعات
           </button>
-          <button
-            onClick={() => setActiveTab('manual')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors
-              ${activeTab === 'manual' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}
-          >
+          <button onClick={() => setActiveTab('manual')}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'manual' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
             🔢 تعديل النقاط
+          </button>
+          <button onClick={() => setActiveTab('tournament')}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'tournament' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
+            🏆 نتائج البطولة
           </button>
         </div>
       </header>
@@ -250,10 +292,8 @@ export default function AdminPage() {
                         <span className="badge-group">م{match.match_num} · مجموعة {match.group_name}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-white/40">{formatKuwaitTime(match.kickoff_utc)}</span>
-                          <button
-                            onClick={() => toggleLock(match)}
-                            className={`text-xs px-2 py-1 rounded-lg ${match.is_locked ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}
-                          >
+                          <button onClick={() => toggleLock(match)}
+                            className={`text-xs px-2 py-1 rounded-lg ${match.is_locked ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
                             {match.is_locked ? '🔒 مغلق' : '🔓 مفتوح'}
                           </button>
                         </div>
@@ -274,11 +314,9 @@ export default function AdminPage() {
                         placeholder="مسجلو الأهداف"
                         className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
                       />
-                      <button
-                        onClick={() => saveResult(match)}
+                      <button onClick={() => saveResult(match)}
                         disabled={saving[match.id] || r.s1==='' || r.s2===''}
-                        className="btn-primary w-full text-sm"
-                      >
+                        className="btn-primary w-full text-sm">
                         {saving[match.id] ? '⏳ جاري الحفظ...' : '💾 حفظ النتيجة وتحديث النقاط'}
                       </button>
                     </div>
@@ -297,9 +335,7 @@ export default function AdminPage() {
                       <div className="flex items-center gap-2 text-sm">
                         <span className="text-white/40 text-xs w-8">م{match.match_num}</span>
                         <span className="flex-1 text-right font-bold text-xs">{match.team1}</span>
-                        <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold text-sm">
-                          {match.score1}-{match.score2}
-                        </span>
+                        <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold text-sm">{match.score1}-{match.score2}</span>
                         <span className="flex-1 text-xs font-bold">{match.team2}</span>
                       </div>
                       {match.scorer && <div className="text-xs text-white/30 text-center">⚽ {match.scorer}</div>}
@@ -337,22 +373,13 @@ export default function AdminPage() {
             <h2 className="text-gold font-bold">✏️ تعديل توقعات المشاركين</h2>
             <div className="card space-y-3">
               <label className="text-sm text-white/70">اختر المشارك:</label>
-              <select
-                value={selectedParticipant || ''}
-                onChange={e => {
-                  const id = Number(e.target.value)
-                  setSelectedParticipant(id)
-                  loadParticipantPredictions(id)
-                }}
-                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
-              >
+              <select value={selectedParticipant || ''}
+                onChange={e => { const id = Number(e.target.value); setSelectedParticipant(id); loadParticipantPredictions(id) }}
+                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none">
                 <option value="">— اختر مشارك —</option>
-                {participants.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
+                {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-
             {selectedParticipant && (
               <div className="space-y-3">
                 {matches.map(match => {
@@ -367,29 +394,19 @@ export default function AdminPage() {
                       </div>
                       <div className="flex items-center gap-2 text-sm font-bold">
                         <span className="flex-1 text-right">{match.team1}</span>
-                        {match.score1 !== null ? (
-                          <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold">{match.score1}-{match.score2}</span>
-                        ) : (
-                          <span className="text-white/30 px-2">🆚</span>
-                        )}
+                        {match.score1 !== null ? <span className="bg-pitch px-3 py-1 rounded-lg font-black text-gold">{match.score1}-{match.score2}</span> : <span className="text-white/30 px-2">🆚</span>}
                         <span className="flex-1">{match.team2}</span>
                       </div>
                       {hasPred && (
                         <div className="text-xs text-white/40 text-center">
                           التوقع الحالي: <span className="text-white/70 font-bold">{pred.pred_score1}-{pred.pred_score2}</span>
                           {pred.pred_scorer && <span className="mr-2">· ⚽ {pred.pred_scorer}</span>}
-                          {match.score1 !== null && (
-                            <span className={`mr-2 font-bold ${pred.total_pts > 0 ? 'text-emerald-400' : 'text-white/30'}`}>
-                              ({pred.total_pts} نقطة)
-                            </span>
-                          )}
+                          {match.score1 !== null && <span className={`mr-2 font-bold ${pred.total_pts > 0 ? 'text-emerald-400' : 'text-white/30'}`}>({pred.total_pts} نقطة)</span>}
                         </div>
                       )}
                       {!hasPred && <div className="text-xs text-white/30 text-center">لا يوجد توقع مسجل</div>}
                       <details>
-                        <summary className="text-xs text-gold/60 cursor-pointer hover:text-gold">
-                          {hasPred ? '✏️ تعديل التوقع' : '➕ إضافة توقع'}
-                        </summary>
+                        <summary className="text-xs text-gold/60 cursor-pointer hover:text-gold">{hasPred ? '✏️ تعديل التوقع' : '➕ إضافة توقع'}</summary>
                         <div className="mt-3 space-y-2">
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-white/50 w-16 text-right">{match.team1}</span>
@@ -407,11 +424,9 @@ export default function AdminPage() {
                             placeholder="مسجل الهدف / الكابتن (اختياري)"
                             className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
                           />
-                          <button
-                            onClick={() => saveParticipantPrediction(match)}
+                          <button onClick={() => saveParticipantPrediction(match)}
                             disabled={savingPred[match.id] || draft.s1 === '' || draft.s2 === ''}
-                            className="btn-primary w-full text-sm"
-                          >
+                            className="btn-primary w-full text-sm">
                             {savingPred[match.id] ? '⏳ جاري الحفظ...' : '💾 حفظ التعديل'}
                           </button>
                         </div>
@@ -429,22 +444,13 @@ export default function AdminPage() {
             <h2 className="text-gold font-bold">🔢 تعديل النقاط يدوياً</h2>
             <div className="card space-y-3">
               <label className="text-sm text-white/70">اختر المشارك:</label>
-              <select
-                value={manualParticipant || ''}
-                onChange={e => {
-                  const id = Number(e.target.value)
-                  setManualParticipant(id)
-                  loadManualPredictions(id)
-                }}
-                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none"
-              >
+              <select value={manualParticipant || ''}
+                onChange={e => { const id = Number(e.target.value); setManualParticipant(id); loadManualPredictions(id) }}
+                className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-3 px-4 text-white text-base outline-none transition-colors appearance-none">
                 <option value="">— اختر مشارك —</option>
-                {participants.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
+                {participants.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-
             {manualParticipant && (
               <div className="space-y-3">
                 {matches.filter(m => manualPredictions[m.id]).map(match => {
@@ -465,32 +471,23 @@ export default function AdminPage() {
                       <div className="flex items-center gap-3">
                         <div className="flex-1">
                           <label className="text-xs text-white/50">نقاط النتيجة</label>
-                          <input type="number" min="0" max="10"
-                            value={draft.pts_result}
+                          <input type="number" min="0" max="10" value={draft.pts_result}
                             onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_result: e.target.value }}))}
-                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1"
-                          />
+                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1" />
                         </div>
                         <div className="flex-1">
                           <label className="text-xs text-white/50">نقاط الهداف</label>
-                          <input type="number" min="0" max="10"
-                            value={draft.pts_scorer}
+                          <input type="number" min="0" max="10" value={draft.pts_scorer}
                             onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_scorer: e.target.value }}))}
-                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1"
-                          />
+                            className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1" />
                         </div>
                         <div className="flex-1 text-center">
                           <label className="text-xs text-white/50">المجموع</label>
-                          <div className="text-gold font-black text-xl mt-2">
-                            {(parseInt(draft.pts_result) || 0) + (parseInt(draft.pts_scorer) || 0)}
-                          </div>
+                          <div className="text-gold font-black text-xl mt-2">{(parseInt(draft.pts_result) || 0) + (parseInt(draft.pts_scorer) || 0)}</div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => saveManualPoints(pred.id, match.id)}
-                        disabled={savingManual[match.id]}
-                        className="btn-primary w-full text-sm"
-                      >
+                      <button onClick={() => saveManualPoints(pred.id, match.id)} disabled={savingManual[match.id]}
+                        className="btn-primary w-full text-sm">
                         {savingManual[match.id] ? '⏳ جاري الحفظ...' : '💾 حفظ النقاط'}
                       </button>
                     </div>
@@ -498,6 +495,91 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </section>
+        )}
+
+        {activeTab === 'tournament' && (
+          <section className="space-y-4">
+            <h2 className="text-gold font-bold">🏆 نتائج البطولة النهائية</h2>
+
+            <div className="card space-y-4">
+              <p className="text-xs text-white/50">أدخل النتائج الفعلية للبطولة ثم اضغط حساب النقاط — سيُضاف للنقاط السابقة لكل مشارك.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">🥇 البطل (20 نقطة)</label>
+                  <input type="text" value={tournamentResult.champion}
+                    onChange={e => setTournamentResult(prev => ({ ...prev, champion: e.target.value }))}
+                    placeholder="اسم الفريق"
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">🥈 الوصيف (10 نقاط)</label>
+                  <input type="text" value={tournamentResult.runner_up}
+                    onChange={e => setTournamentResult(prev => ({ ...prev, runner_up: e.target.value }))}
+                    placeholder="اسم الفريق"
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">⚽ الهداف (15 نقطة)</label>
+                  <input type="text" value={tournamentResult.top_scorer}
+                    onChange={e => setTournamentResult(prev => ({ ...prev, top_scorer: e.target.value }))}
+                    placeholder="اسم اللاعب"
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">⭐ أفضل لاعب (10 نقاط)</label>
+                  <input type="text" value={tournamentResult.best_player}
+                    onChange={e => setTournamentResult(prev => ({ ...prev, best_player: e.target.value }))}
+                    placeholder="اسم اللاعب"
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
+                  />
+                </div>
+              </div>
+              <button onClick={saveTournamentResults}
+                disabled={savingTournament || !tournamentResult.champion}
+                className="btn-primary w-full">
+                {savingTournament ? '⏳ جاري الحساب...' : '🏆 حساب نقاط البطولة وإضافتها'}
+              </button>
+            </div>
+
+            {/* عرض توقعات كل المشاركين */}
+            <div className="card space-y-3">
+              <h3 className="text-sm font-bold text-white/70">توقعات المشاركين للبطولة</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/10">
+                      <th className="text-right py-2 px-1 text-white/40 font-normal">المشارك</th>
+                      <th className="text-center py-2 px-1 text-white/40 font-normal">البطل</th>
+                      <th className="text-center py-2 px-1 text-white/40 font-normal">الوصيف</th>
+                      <th className="text-center py-2 px-1 text-white/40 font-normal">الهداف</th>
+                      <th className="text-center py-2 px-1 text-white/40 font-normal">أفضل لاعب</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tournamentPreds.map(tp => {
+                      const p = participants.find(x => x.id === tp.participant_id)
+                      const champMatch = tournamentResult.champion && tp.pred_champion?.toLowerCase() === tournamentResult.champion.toLowerCase()
+                      const runnerMatch = tournamentResult.runner_up && tp.pred_runner_up?.toLowerCase() === tournamentResult.runner_up.toLowerCase()
+                      const scorerMatch = tournamentResult.top_scorer && tp.pred_top_scorer?.toLowerCase() === tournamentResult.top_scorer.toLowerCase()
+                      const playerMatch = tournamentResult.best_player && tp.pred_best_player?.toLowerCase() === tournamentResult.best_player.toLowerCase()
+                      return (
+                        <tr key={tp.id} className="border-b border-white/5">
+                          <td className="py-2 px-1 font-bold">{p?.name}</td>
+                          <td className={`py-2 px-1 text-center ${champMatch ? 'text-emerald-400 font-bold' : 'text-white/60'}`}>{tp.pred_champion}</td>
+                          <td className={`py-2 px-1 text-center ${runnerMatch ? 'text-emerald-400 font-bold' : 'text-white/60'}`}>{tp.pred_runner_up}</td>
+                          <td className={`py-2 px-1 text-center ${scorerMatch ? 'text-emerald-400 font-bold' : 'text-white/60'}`}>{tp.pred_top_scorer}</td>
+                          <td className={`py-2 px-1 text-center ${playerMatch ? 'text-emerald-400 font-bold' : 'text-white/60'}`}>{tp.pred_best_player}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </section>
         )}
       </div>
