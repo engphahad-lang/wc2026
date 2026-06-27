@@ -16,7 +16,8 @@ export default function TodayPage() {
   const kuwaitOffset = 3 * 60 * 60 * 1000
   const kuwaitNow = new Date(now.getTime() + kuwaitOffset)
   const todayStart = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() - 1) - kuwaitOffset)
-  const todayEnd   = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() + 1) - kuwaitOffset)
+  const todayEnd = new Date(Date.UTC(kuwaitNow.getUTCFullYear(), kuwaitNow.getUTCMonth(), kuwaitNow.getUTCDate() + 2) - kuwaitOffset)
+
 
   const [{ data: m }, { data: p }] = await Promise.all([
     supabase.from('matches').select('*')
