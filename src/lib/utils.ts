@@ -51,10 +51,15 @@ export function calcPoints(
   if (isGroup) {
     if (pred1 === act1 && pred2 === act2) pts_result = 3
     else if (Math.sign(pred1-pred2) === Math.sign(act1-act2)) pts_result = 1
-  } else {
+ } else {
     // knockout: 6 for exact 90min, 3 for correct qualifier
-    if (pred1 === act1 && pred2 === act2) pts_result = 6
+    if (pred1 === act1 && pred2 === act2) {
+      pts_result = 6
+    } else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) {
+      pts_result = 3
+    }
   }
+
 
   let pts_scorer = 0
   if (predScorer && actScorer) {
