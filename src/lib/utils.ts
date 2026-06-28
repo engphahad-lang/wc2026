@@ -20,18 +20,18 @@ export function formatKuwaitTime(utcStr: string): string {
 
 export function isLocked(kickoffUtc: string): boolean {
   const kickoff = new Date(kickoffUtc)
-  const lockTime = new Date(kickoff.getTime() - 1 * 60 * 1000) // 1 minute before
-  return new Date() >= lockTime
+  const lockTime = new Date(kickoff.getTime() - 1 * 60 * 1000)
+  return Date.now() >= lockTime.getTime()
 }
 
 export function getTimeUntilLock(kickoffUtc: string): string {
   const lockTime = new Date(new Date(kickoffUtc).getTime() - 1 * 60 * 1000)
-  const now = new Date()
-  const diff = lockTime.getTime() - now.getTime()
+  const diff = lockTime.getTime() - Date.now()
   if (diff <= 0) return 'مغلق'
-  const h = Math.floor(diff / 3600000)
-  const m = Math.floor((diff % 3600000) / 60000)
-  if (h > 24) {
+  const totalMinutes = Math.floor(diff / 60000)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  if (h >= 24) {
     const days = Math.floor(h / 24)
     return `${days} يوم`
   }
@@ -41,32 +41,38 @@ export function getTimeUntilLock(kickoffUtc: string): string {
 
 export function calcPoints(
   pred1: number, pred2: number,
-  act1: number,  act2: number,
+  act1: number, act2: number,
   predScorer: string, actScorer: string,
-  stage: string
-): { pts_result: number; pts_scorer: number; total_pts: number } {
+  stage: string,
+  predQualifier?: string, actQualifier?: string
+): { pts_result: number; pts_scorer: number; pts_qualifier: number; total_pts: number } {
   const isGroup = stage === 'group'
   let pts_result = 0
+  let pts_scorer = 0
+  let pts_qualifier = 0
 
   if (isGroup) {
     if (pred1 === act1 && pred2 === act2) pts_result = 3
     else if (Math.sign(pred1-pred2) === Math.sign(act1-act2)) pts_result = 1
- } else {
-    // knockout: 6 for exact 90min, 3 for correct qualifier
+  } else {
     if (pred1 === act1 && pred2 === act2) {
       pts_result = 6
     } else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) {
       pts_result = 3
     }
+    // نقاط المتأهل
+    if (predQualifier && actQualifier) {
+      const pq = predQualifier.trim().toLowerCase()
+      const aq = actQualifier.trim().toLowerCase()
+      if (pq && aq && (aq.includes(pq) || pq.includes(aq))) pts_qualifier = 3
+    }
   }
 
-
-  let pts_scorer = 0
-  if (predScorer && actScorer) {
+  if (isGroup && predScorer && actScorer) {
     const p = predScorer.trim().toLowerCase()
     const a = actScorer.trim().toLowerCase()
     if (p && a && (a.includes(p) || p.includes(a))) pts_scorer = 3
   }
 
-  return { pts_result, pts_scorer, total_pts: pts_result + pts_scorer }
+  return { pts_result, pts_scorer, pts_qualifier, total_pts: pts_result + pts_scorer + pts_qualifier }
 }
