@@ -310,8 +310,9 @@ export default function ParticipantPage() {
                             />
                           )}
                         </div>
-                        {isKnockout && (
-                          <div className="flex gap-2 items-center">
+                        {isKnockout && draft.s1 !== '' && draft.s1 === draft.s2 && (
+  <div className="flex gap-2 items-center">
+
                             <span className="text-xs text-white/50 flex-shrink-0">🏆 المتأهل:</span>
                             <select
                               value={draft.qualifier}
@@ -326,7 +327,8 @@ export default function ParticipantPage() {
                         )}
                         <button
                           onClick={() => savePrediction(match)}
-                          disabled={saving[match.id] || draft.s1==='' || draft.s2==='' || (isKnockout && !draft.qualifier)}
+                          disabled={saving[match.id] || draft.s1==='' || draft.s2==='' || (isKnockout && draft.s1 === draft.s2 && draft.s1 !== '' && !draft.qualifier)}
+
                           className="btn-primary w-full text-sm"
                         >
                           {saving[match.id] ? '⏳ جاري الحفظ...' : saved[match.id] ? '✅ تم الحفظ!' : pred ? 'تحديث التوقع' : 'حفظ التوقع'}
