@@ -290,14 +290,17 @@ export default function ParticipantPage() {
                            placeholder="0"
                            className="score-input"
                          />
-                         <input
-                           type="text"
-                           value={draft.scorer}
-                           onChange={e => updateDraft(match.id, 'scorer', e.target.value)}
-                           placeholder="مسجل الهدف (اختياري)"
-                           className="flex-1 bg-navy border-2 border-white/20 focus:border-gold
-                                      rounded-xl py-2 px-3 text-sm outline-none transition-colors"
-                         />
+                         {match.stage === 'group' && (
+  <input
+    type="text"
+    value={draft.scorer}
+    onChange={e => updateDraft(match.id, 'scorer', e.target.value)}
+    placeholder="مسجل الهدف (اختياري)"
+    className="flex-1 bg-navy border-2 border-white/20 focus:border-gold
+               rounded-xl py-2 px-3 text-sm outline-none transition-colors"
+  />
+)}
+
                        </div>
                        <button
                          onClick={() => savePrediction(match)}
