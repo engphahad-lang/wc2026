@@ -19,24 +19,20 @@ export default function AdminPage() {
   const [authed, setAuthed]   = useState(false)
   const [matches, setMatches] = useState<Match[]>([])
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
+  const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string; qualifier: string }>>({})
   const [saving, setSaving]   = useState<Record<number, boolean>>({})
   const [msg, setMsg]         = useState('')
   const [activeTab, setActiveTab] = useState<'results' | 'predictions' | 'manual' | 'tournament'>('results')
   const [selectedParticipant, setSelectedParticipant] = useState<number | null>(null)
   const [participantPredictions, setParticipantPredictions] = useState<Record<number, Prediction>>({})
-  const [predDrafts, setPredDrafts] = useState<Record<number, { s1: string; s2: string; scorer: string }>>({})
+  const [predDrafts, setPredDrafts] = useState<Record<number, { s1: string; s2: string; scorer: string; qualifier: string }>>({})
   const [savingPred, setSavingPred] = useState<Record<number, boolean>>({})
   const [manualParticipant, setManualParticipant] = useState<number | null>(null)
   const [manualPredictions, setManualPredictions] = useState<Record<number, Prediction>>({})
-  const [manualPts, setManualPts] = useState<Record<number, { pts_result: string; pts_scorer: string }>>({})
+  const [manualPts, setManualPts] = useState<Record<number, { pts_result: string; pts_scorer: string; pts_qualifier: string }>>({})
   const [savingManual, setSavingManual] = useState<Record<number, boolean>>({})
-
-  // Tournament state
   const [tournamentPreds, setTournamentPreds] = useState<TournamentPred[]>([])
-  const [tournamentResult, setTournamentResult] = useState({
-    champion: '', runner_up: '', top_scorer: '', best_player: ''
-  })
+  const [tournamentResult, setTournamentResult] = useState({ champion: '', runner_up: '', top_scorer: '', best_player: '' })
   const [savingTournament, setSavingTournament] = useState(false)
 
   async function loadMatches() {
@@ -55,16 +51,11 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
-    if (authed) {
-      loadMatches()
-      loadParticipants()
-      loadTournamentPreds()
-    }
+    if (authed) { loadMatches(); loadParticipants(); loadTournamentPreds() }
   }, [authed])
 
   async function loadParticipantPredictions(participantId: number) {
-    const { data } = await supabase
-      .from('predictions').select('*').eq('participant_id', participantId)
+    const { data } = await supabase.from('predictions').select('*').eq('participant_id', participantId)
     if (data) {
       const map: Record<number, Prediction> = {}
       data.forEach(p => { map[p.match_id] = p })
@@ -74,8 +65,7 @@ export default function AdminPage() {
   }
 
   async function loadManualPredictions(participantId: number) {
-    const { data } = await supabase
-      .from('predictions').select('*').eq('participant_id', participantId)
+    const { data } = await supabase.from('predictions').select('*').eq('participant_id', participantId)
     if (data) {
       const map: Record<number, Prediction> = {}
       data.forEach(p => { map[p.match_id] = p })
@@ -89,21 +79,33 @@ export default function AdminPage() {
     if (!r) return
     const s1 = parseInt(r.s1), s2 = parseInt(r.s2)
     if (isNaN(s1) || isNaN(s2)) return
+    const isKnockout = match.stage !== 'group'
     setSaving(prev => ({ ...prev, [match.id]: true }))
+
     await supabase.from('matches')
-      .update({ score1: s1, score2: s2, scorer: r.scorer || null })
+      .update({
+        score1: s1, score2: s2,
+        scorer: !isKnockout ? (r.scorer || null) : null,
+        qualifier: isKnockout ? (r.qualifier || null) : null
+      })
       .eq('id', match.id)
-    const { data: preds } = await supabase
-      .from('predictions').select('*').eq('match_id', match.id)
+
+    const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
     if (preds && preds.length > 0) {
       const updates = preds.map((p: Prediction) => {
-        const pts = calcPoints(p.pred_score1, p.pred_score2, s1, s2,
-                               p.pred_scorer || '', r.scorer || '', match.stage)
+        const pts = calcPoints(
+          p.pred_score1, p.pred_score2, s1, s2,
+          p.pred_scorer || '', r.scorer || '', match.stage,
+          p.pred_qualifier || '', r.qualifier || ''
+        )
         return { id: p.id, ...pts }
       })
       for (const u of updates) {
         await supabase.from('predictions').update({
-          pts_result: u.pts_result, pts_scorer: u.pts_scorer, total_pts: u.total_pts
+          pts_result: u.pts_result,
+          pts_scorer: u.pts_scorer,
+          pts_qualifier: u.pts_qualifier,
+          total_pts: u.total_pts
         }).eq('id', u.id)
       }
     }
@@ -115,26 +117,19 @@ export default function AdminPage() {
   async function saveTournamentResults() {
     if (!tournamentResult.champion) return
     setSavingTournament(true)
-
-    // حساب نقاط كل مشارك
     for (const tp of tournamentPreds) {
       let bonus = 0
       if (tp.pred_champion?.toLowerCase() === tournamentResult.champion.toLowerCase()) bonus += 20
       if (tp.pred_runner_up?.toLowerCase() === tournamentResult.runner_up.toLowerCase()) bonus += 10
       if (tp.pred_top_scorer?.toLowerCase() === tournamentResult.top_scorer.toLowerCase()) bonus += 15
       if (tp.pred_best_player?.toLowerCase() === tournamentResult.best_player.toLowerCase()) bonus += 10
-
       if (bonus > 0) {
-        // أضف النقاط لـ prev_pts
         const participant = participants.find(p => p.id === tp.participant_id)
         if (participant) {
-          await supabase.from('participants').update({
-            prev_pts: (participant.prev_pts || 0) + bonus
-          }).eq('id', tp.participant_id)
+          await supabase.from('participants').update({ prev_pts: (participant.prev_pts || 0) + bonus }).eq('id', tp.participant_id)
         }
       }
     }
-
     setMsg('✅ تم حساب نقاط توقعات البطولة وإضافتها')
     setSavingTournament(false)
     await loadParticipants()
@@ -151,6 +146,7 @@ export default function AdminPage() {
       s1: match.score1 !== null ? String(match.score1) : '',
       s2: match.score2 !== null ? String(match.score2) : '',
       scorer: match.scorer || '',
+      qualifier: match.qualifier || '',
     }
   }
 
@@ -158,27 +154,23 @@ export default function AdminPage() {
     if (!selectedParticipant) return
     const draft = predDrafts[match.id]
     if (!draft) return
-    const s1 = parseInt(draft.s1)
-    const s2 = parseInt(draft.s2)
+    const s1 = parseInt(draft.s1), s2 = parseInt(draft.s2)
     if (isNaN(s1) || isNaN(s2)) return
+    const isKnockout = match.stage !== 'group'
     setSavingPred(prev => ({ ...prev, [match.id]: true }))
     const existing = participantPredictions[match.id]
     const payload = {
-      participant_id: selectedParticipant,
-      match_id: match.id,
-      pred_score1: s1,
-      pred_score2: s2,
-      pred_scorer: draft.scorer || null,
+      participant_id: selectedParticipant, match_id: match.id,
+      pred_score1: s1, pred_score2: s2,
+      pred_scorer: !isKnockout ? (draft.scorer || null) : null,
+      pred_qualifier: isKnockout ? (draft.qualifier || null) : null,
     }
     if (existing) {
       if (match.score1 !== null && match.score2 !== null) {
         const pts = calcPoints(s1, s2, match.score1, match.score2,
-                               draft.scorer || '', match.scorer || '', match.stage)
-        await supabase.from('predictions')
-          .update({
-            pred_score1: s1, pred_score2: s2, pred_scorer: draft.scorer || null,
-            pts_result: pts.pts_result, pts_scorer: pts.pts_scorer, total_pts: pts.total_pts
-          }).eq('id', existing.id)
+          draft.scorer || '', match.scorer || '', match.stage,
+          draft.qualifier || '', match.qualifier || '')
+        await supabase.from('predictions').update({ ...payload, ...pts }).eq('id', existing.id)
       } else {
         await supabase.from('predictions').update(payload).eq('id', existing.id)
       }
@@ -196,10 +188,12 @@ export default function AdminPage() {
     if (!pts) return
     const pts_result = parseInt(pts.pts_result)
     const pts_scorer = parseInt(pts.pts_scorer)
+    const pts_qualifier = parseInt(pts.pts_qualifier || '0')
     if (isNaN(pts_result) || isNaN(pts_scorer)) return
     setSavingManual(prev => ({ ...prev, [matchId]: true }))
     await supabase.from('predictions').update({
-      pts_result, pts_scorer, total_pts: pts_result + pts_scorer
+      pts_result, pts_scorer, pts_qualifier,
+      total_pts: pts_result + pts_scorer + pts_qualifier
     }).eq('id', predId)
     await loadManualPredictions(manualParticipant!)
     setSavingManual(prev => ({ ...prev, [matchId]: false }))
@@ -214,7 +208,17 @@ export default function AdminPage() {
       s1: d?.s1 ?? (p ? String(p.pred_score1) : ''),
       s2: d?.s2 ?? (p ? String(p.pred_score2) : ''),
       scorer: d?.scorer ?? (p?.pred_scorer || ''),
+      qualifier: d?.qualifier ?? (p?.pred_qualifier || ''),
     }
+  }
+
+  const stageLabel = (stage: string) => {
+    if (stage === 'r32') return 'دور الـ32'
+    if (stage === 'r16') return 'دور الـ16'
+    if (stage === 'qf') return 'ربع النهائي'
+    if (stage === 'sf') return 'نصف النهائي'
+    if (stage === 'final') return 'النهائي'
+    return stage
   }
 
   if (!authed) {
@@ -223,18 +227,14 @@ export default function AdminPage() {
         <div className="card w-full max-w-xs space-y-4 text-center">
           <div className="text-4xl">🔐</div>
           <h1 className="text-xl font-bold text-gold">لوحة الإدارة</h1>
-          <input
-            type="password"
-            value={pin}
+          <input type="password" value={pin}
             onChange={e => setPin(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && pin === ADMIN_PIN && setAuthed(true)}
             placeholder="رمز الدخول"
             className="w-full bg-navy-light border-2 border-white/20 rounded-xl py-3 px-4 text-center text-white outline-none"
           />
-          <button
-            onClick={() => pin === ADMIN_PIN ? setAuthed(true) : setMsg('رمز خاطئ')}
-            className="btn-primary w-full"
-          >دخول</button>
+          <button onClick={() => pin === ADMIN_PIN ? setAuthed(true) : setMsg('رمز خاطئ')}
+            className="btn-primary w-full">دخول</button>
           {msg && <p className="text-red-400 text-sm">{msg}</p>}
         </div>
       </div>
@@ -252,22 +252,10 @@ export default function AdminPage() {
           <span className="text-xs text-white/40">{matches.length} مباراة · {played.length} مُلعبة</span>
         </div>
         <div className="max-w-3xl mx-auto px-4 pb-3 flex gap-2 overflow-x-auto">
-          <button onClick={() => setActiveTab('results')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'results' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
-            📊 النتائج
-          </button>
-          <button onClick={() => setActiveTab('predictions')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'predictions' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
-            ✏️ تعديل التوقعات
-          </button>
-          <button onClick={() => setActiveTab('manual')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'manual' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
-            🔢 تعديل النقاط
-          </button>
-          <button onClick={() => setActiveTab('tournament')}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'tournament' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>
-            🏆 نتائج البطولة
-          </button>
+          <button onClick={() => setActiveTab('results')} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'results' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>📊 النتائج</button>
+          <button onClick={() => setActiveTab('predictions')} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'predictions' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>✏️ تعديل التوقعات</button>
+          <button onClick={() => setActiveTab('manual')} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'manual' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>🔢 تعديل النقاط</button>
+          <button onClick={() => setActiveTab('tournament')} className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${activeTab === 'tournament' ? 'bg-gold text-navy' : 'bg-white/10 text-white/70'}`}>🏆 نتائج البطولة</button>
         </div>
       </header>
 
@@ -286,10 +274,11 @@ export default function AdminPage() {
               <div className="space-y-3">
                 {unplayed.map(match => {
                   const r = getResult(match)
+                  const isKnockout = match.stage !== 'group'
                   return (
                     <div key={match.id} className="card space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="badge-group">م{match.match_num} · مجموعة {match.group_name}</span>
+                        <span className="badge-group">م{match.match_num} · {match.group_name || stageLabel(match.stage)}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-white/40">{formatKuwaitTime(match.kickoff_utc)}</span>
                           <button onClick={() => toggleLock(match)}
@@ -301,19 +290,33 @@ export default function AdminPage() {
                       <div className="flex items-center gap-1 font-bold text-sm">
                         <span className="flex-1 text-right">{match.team1}</span>
                         <input type="number" min="0" max="20" value={r.s1}
-                          onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:''}), s1: e.target.value}}))}
+                          onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), s1: e.target.value}}))}
                           className="score-input" placeholder="0" />
                         <span className="text-white/30">-</span>
                         <input type="number" min="0" max="20" value={r.s2}
-                          onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:''}), s2: e.target.value}}))}
+                          onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), s2: e.target.value}}))}
                           className="score-input" placeholder="0" />
                         <span className="flex-1">{match.team2}</span>
                       </div>
-                      <input type="text" value={r.scorer}
-                        onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:''}), scorer: e.target.value}}))}
-                        placeholder="مسجلو الأهداف"
-                        className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
-                      />
+                      {!isKnockout && (
+                        <input type="text" value={r.scorer}
+                          onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), scorer: e.target.value}}))}
+                          placeholder="مسجلو الأهداف"
+                          className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
+                        />
+                      )}
+                      {isKnockout && (
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs text-white/50 flex-shrink-0">🏆 المتأهل:</span>
+                          <select value={r.qualifier}
+                            onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), qualifier: e.target.value}}))}
+                            className="flex-1 bg-navy border border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none appearance-none">
+                            <option value="">— اختر المتأهل —</option>
+                            <option value={match.team1}>{match.team1}</option>
+                            <option value={match.team2}>{match.team2}</option>
+                          </select>
+                        </div>
+                      )}
                       <button onClick={() => saveResult(match)}
                         disabled={saving[match.id] || r.s1==='' || r.s2===''}
                         className="btn-primary w-full text-sm">
@@ -330,6 +333,7 @@ export default function AdminPage() {
               <div className="space-y-2">
                 {played.map(match => {
                   const r = getResult(match)
+                  const isKnockout = match.stage !== 'group'
                   return (
                     <div key={match.id} className="card py-2 px-3 space-y-2">
                       <div className="flex items-center gap-2 text-sm">
@@ -339,21 +343,36 @@ export default function AdminPage() {
                         <span className="flex-1 text-xs font-bold">{match.team2}</span>
                       </div>
                       {match.scorer && <div className="text-xs text-white/30 text-center">⚽ {match.scorer}</div>}
+                      {match.qualifier && <div className="text-xs text-white/30 text-center">🏆 {match.qualifier}</div>}
                       <details className="group">
                         <summary className="text-xs text-white/30 cursor-pointer hover:text-white/60">تعديل النتيجة</summary>
                         <div className="mt-2 space-y-2">
                           <div className="flex items-center gap-1">
                             <input type="number" min="0" max="20" value={r.s1}
-                              onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||''}), s1: e.target.value}}))}
+                              onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), s1: e.target.value}}))}
                               className="score-input" />
                             <span className="text-white/30">-</span>
                             <input type="number" min="0" max="20" value={r.s2}
-                              onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||''}), s2: e.target.value}}))}
+                              onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), s2: e.target.value}}))}
                               className="score-input" />
-                            <input type="text" value={r.scorer}
-                              onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||''}), scorer: e.target.value}}))}
-                              className="flex-1 bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
+                            {!isKnockout && (
+                              <input type="text" value={r.scorer}
+                                onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), scorer: e.target.value}}))}
+                                className="flex-1 bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
+                            )}
                           </div>
+                          {isKnockout && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-xs text-white/50">🏆 المتأهل:</span>
+                              <select value={r.qualifier}
+                                onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:'',qualifier:match.qualifier||''}), qualifier: e.target.value}}))}
+                                className="flex-1 bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs text-white outline-none appearance-none">
+                                <option value="">— اختر المتأهل —</option>
+                                <option value={match.team1}>{match.team1}</option>
+                                <option value={match.team2}>{match.team2}</option>
+                              </select>
+                            </div>
+                          )}
                           <button onClick={() => saveResult(match)} disabled={saving[match.id]}
                             className="btn-primary w-full text-xs">
                             {saving[match.id] ? '⏳...' : '💾 حفظ التعديل'}
@@ -386,10 +405,11 @@ export default function AdminPage() {
                   const pred = participantPredictions[match.id]
                   const draft = getPredDraft(match)
                   const hasPred = !!pred
+                  const isKnockout = match.stage !== 'group'
                   return (
                     <div key={match.id} className={`card space-y-3 ${hasPred ? 'border-gold/20' : 'border-white/5'}`}>
                       <div className="flex items-center justify-between">
-                        <span className="badge-group">م{match.match_num} · مجموعة {match.group_name}</span>
+                        <span className="badge-group">م{match.match_num} · {match.group_name || stageLabel(match.stage)}</span>
                         <span className="text-xs text-white/40">{formatKuwaitTime(match.kickoff_utc)}</span>
                       </div>
                       <div className="flex items-center gap-2 text-sm font-bold">
@@ -399,7 +419,8 @@ export default function AdminPage() {
                       </div>
                       {hasPred && (
                         <div className="text-xs text-white/40 text-center">
-                          التوقع الحالي: <span className="text-white/70 font-bold">{pred.pred_score1}-{pred.pred_score2}</span>
+                          التوقع: <span className="text-white/70 font-bold">{pred.pred_score1}-{pred.pred_score2}</span>
+                          {pred.pred_qualifier && <span className="mr-2">· 🏆 {pred.pred_qualifier}</span>}
                           {pred.pred_scorer && <span className="mr-2">· ⚽ {pred.pred_scorer}</span>}
                           {match.score1 !== null && <span className={`mr-2 font-bold ${pred.total_pts > 0 ? 'text-emerald-400' : 'text-white/30'}`}>({pred.total_pts} نقطة)</span>}
                         </div>
@@ -411,19 +432,33 @@ export default function AdminPage() {
                           <div className="flex items-center gap-2">
                             <span className="text-xs text-white/50 w-16 text-right">{match.team1}</span>
                             <input type="number" min="0" max="20" value={draft.s1}
-                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s1: e.target.value }}))}
+                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '', qualifier: '' }), s1: e.target.value }}))}
                               className="score-input" placeholder="0" />
                             <span className="text-white/30">-</span>
                             <input type="number" min="0" max="20" value={draft.s2}
-                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), s2: e.target.value }}))}
+                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '', qualifier: '' }), s2: e.target.value }}))}
                               className="score-input" placeholder="0" />
                             <span className="text-xs text-white/50 w-16">{match.team2}</span>
                           </div>
-                          <input type="text" value={draft.scorer}
-                            onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '' }), scorer: e.target.value }}))}
-                            placeholder="مسجل الهدف / الكابتن (اختياري)"
-                            className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
-                          />
+                          {!isKnockout && (
+                            <input type="text" value={draft.scorer}
+                              onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '', qualifier: '' }), scorer: e.target.value }}))}
+                              placeholder="مسجل الهدف (اختياري)"
+                              className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
+                            />
+                          )}
+                          {isKnockout && (
+                            <div className="flex gap-2 items-center">
+                              <span className="text-xs text-white/50">🏆 المتأهل:</span>
+                              <select value={draft.qualifier}
+                                onChange={e => setPredDrafts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { s1: '', s2: '', scorer: '', qualifier: '' }), qualifier: e.target.value }}))}
+                                className="flex-1 bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm text-white outline-none appearance-none">
+                                <option value="">— اختر المتأهل —</option>
+                                <option value={match.team1}>{match.team1}</option>
+                                <option value={match.team2}>{match.team2}</option>
+                              </select>
+                            </div>
+                          )}
                           <button onClick={() => saveParticipantPrediction(match)}
                             disabled={savingPred[match.id] || draft.s1 === '' || draft.s2 === ''}
                             className="btn-primary w-full text-sm">
@@ -456,34 +491,38 @@ export default function AdminPage() {
                 {matches.filter(m => manualPredictions[m.id]).map(match => {
                   const pred = manualPredictions[match.id]
                   if (!pred) return null
-                  const draft = manualPts[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }
+                  const draft = manualPts[match.id] || {
+                    pts_result: String(pred.pts_result),
+                    pts_scorer: String(pred.pts_scorer),
+                    pts_qualifier: String(pred.pts_qualifier || 0)
+                  }
                   return (
                     <div key={match.id} className="card space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="badge-group">م{match.match_num} · {match.group_name}</span>
+                        <span className="badge-group">م{match.match_num} · {match.group_name || stageLabel(match.stage)}</span>
                         <span className="text-xs text-white/40">{match.team1} vs {match.team2}</span>
                       </div>
                       <div className="text-xs text-white/50 text-center">
                         توقع: <span className="text-white/70">{pred.pred_score1}-{pred.pred_score2}</span>
-                        {pred.pred_scorer && <span className="mr-2">· {pred.pred_scorer}</span>}
-                        · نقاط حالية: <span className="text-emerald-400 font-bold">{pred.total_pts}</span>
+                        {pred.pred_qualifier && <span className="mr-2">· 🏆 {pred.pred_qualifier}</span>}
+                        · نقاط: <span className="text-emerald-400 font-bold">{pred.total_pts}</span>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         <div className="flex-1">
                           <label className="text-xs text-white/50">نقاط النتيجة</label>
                           <input type="number" min="0" max="10" value={draft.pts_result}
-                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_result: e.target.value }}))}
+                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer), pts_qualifier: String(pred.pts_qualifier||0) }), pts_result: e.target.value }}))}
                             className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1" />
                         </div>
                         <div className="flex-1">
-                          <label className="text-xs text-white/50">نقاط الهداف</label>
-                          <input type="number" min="0" max="10" value={draft.pts_scorer}
-                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer) }), pts_scorer: e.target.value }}))}
+                          <label className="text-xs text-white/50">نقاط المتأهل</label>
+                          <input type="number" min="0" max="10" value={draft.pts_qualifier}
+                            onChange={e => setManualPts(prev => ({ ...prev, [match.id]: { ...(prev[match.id] || { pts_result: String(pred.pts_result), pts_scorer: String(pred.pts_scorer), pts_qualifier: String(pred.pts_qualifier||0) }), pts_qualifier: e.target.value }}))}
                             className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-center text-white outline-none mt-1" />
                         </div>
                         <div className="flex-1 text-center">
                           <label className="text-xs text-white/50">المجموع</label>
-                          <div className="text-gold font-black text-xl mt-2">{(parseInt(draft.pts_result) || 0) + (parseInt(draft.pts_scorer) || 0)}</div>
+                          <div className="text-gold font-black text-xl mt-2">{(parseInt(draft.pts_result)||0) + (parseInt(draft.pts_scorer)||0) + (parseInt(draft.pts_qualifier)||0)}</div>
                         </div>
                       </div>
                       <button onClick={() => saveManualPoints(pred.id, match.id)} disabled={savingManual[match.id]}
@@ -501,41 +540,36 @@ export default function AdminPage() {
         {activeTab === 'tournament' && (
           <section className="space-y-4">
             <h2 className="text-gold font-bold">🏆 نتائج البطولة النهائية</h2>
-
             <div className="card space-y-4">
-              <p className="text-xs text-white/50">أدخل النتائج الفعلية للبطولة ثم اضغط حساب النقاط — سيُضاف للنقاط السابقة لكل مشارك.</p>
+              <p className="text-xs text-white/50">أدخل النتائج الفعلية للبطولة ثم اضغط حساب النقاط.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-white/50 mb-1 block">🥇 البطل (20 نقطة)</label>
                   <input type="text" value={tournamentResult.champion}
                     onChange={e => setTournamentResult(prev => ({ ...prev, champion: e.target.value }))}
                     placeholder="اسم الفريق"
-                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
-                  />
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-xs text-white/50 mb-1 block">🥈 الوصيف (10 نقاط)</label>
                   <input type="text" value={tournamentResult.runner_up}
                     onChange={e => setTournamentResult(prev => ({ ...prev, runner_up: e.target.value }))}
                     placeholder="اسم الفريق"
-                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
-                  />
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-xs text-white/50 mb-1 block">⚽ الهداف (15 نقطة)</label>
                   <input type="text" value={tournamentResult.top_scorer}
                     onChange={e => setTournamentResult(prev => ({ ...prev, top_scorer: e.target.value }))}
                     placeholder="اسم اللاعب"
-                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
-                  />
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-xs text-white/50 mb-1 block">⭐ أفضل لاعب (10 نقاط)</label>
                   <input type="text" value={tournamentResult.best_player}
                     onChange={e => setTournamentResult(prev => ({ ...prev, best_player: e.target.value }))}
                     placeholder="اسم اللاعب"
-                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none"
-                  />
+                    className="w-full bg-navy border-2 border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none" />
                 </div>
               </div>
               <button onClick={saveTournamentResults}
@@ -544,8 +578,6 @@ export default function AdminPage() {
                 {savingTournament ? '⏳ جاري الحساب...' : '🏆 حساب نقاط البطولة وإضافتها'}
               </button>
             </div>
-
-            {/* عرض توقعات كل المشاركين */}
             <div className="card space-y-3">
               <h3 className="text-sm font-bold text-white/70">توقعات المشاركين للبطولة</h3>
               <div className="overflow-x-auto">
