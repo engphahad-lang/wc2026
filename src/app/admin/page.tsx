@@ -37,6 +37,7 @@ export default function AdminPage() {
  const [newMatch, setNewMatch] = useState({ team1: '', team2: '', stage: 'r16', date: '', time: '' })
  const [savingMatch, setSavingMatch] = useState(false)
  const [hideCompleted, setHideCompleted] = useState(true)
+ const [stageFilter, setStageFilter] = useState<string>("all")
  
  async function loadMatches() {
    const { data } = await supabase.from('matches').select('*').order('match_num')
@@ -305,10 +306,20 @@ export default function AdminPage() {
  
        {activeTab === 'results' && (
          <>
+           <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+             {["all","group","r32","r16","qf","sf","final"].map(s => (
+               <button key={s} onClick={() => setStageFilter(s)}
+                 className={`flex-shrink-0 px-3 py-1 rounded-full text-xs font-bold transition-colors ${
+                   stageFilter === s ? "bg-gold text-navy" : "bg-white/10 text-white/60"
+                 }`}>
+                 {s === "all" ? "الكل" : s === "group" ? "المجموعات" : s === "r32" ? "دور 32" : s === "r16" ? "دور 16" : s === "qf" ? "ربع" : s === "sf" ? "نصف" : "النهائي"}
+               </button>
+             ))}
+           </div>
            <section>
              <h2 className="text-gold font-bold mb-3">⏳ مباريات تحتاج نتيجة ({unplayed.length})</h2>
              <div className="space-y-3">
-               {unplayed.map(match => {
+               {unplayed.filter(m => stageFilter === "all" || m.stage === stageFilter || (stageFilter === "group" && m.stage === "group")).map(match => {
                  const r = getResult(match)
                  const isKnockout = match.stage !== 'group'
                  return (
