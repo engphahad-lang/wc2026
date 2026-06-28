@@ -189,12 +189,17 @@ export default function AdminPage() {
     const pts_result = parseInt(pts.pts_result)
     const pts_scorer = parseInt(pts.pts_scorer)
     const pts_qualifier = parseInt(pts.pts_qualifier || '0')
-    if (isNaN(pts_result) || isNaN(pts_scorer)) return
+    if (isNaN(pts_result)) return
+    const match = matches.find(m => m.id === matchId)
+    const isKnockout = match?.stage !== 'group'
     setSavingManual(prev => ({ ...prev, [matchId]: true }))
     await supabase.from('predictions').update({
-      pts_result, pts_scorer, pts_qualifier,
-      total_pts: pts_result + pts_scorer + pts_qualifier
+      pts_result,
+      pts_scorer: isKnockout ? 0 : pts_scorer,
+      pts_qualifier,
+      total_pts: pts_result + (isKnockout ? 0 : pts_scorer) + pts_qualifier
     }).eq('id', predId)
+
     await loadManualPredictions(manualParticipant!)
     setSavingManual(prev => ({ ...prev, [matchId]: false }))
     setMsg('✅ تم تعديل النقاط يدوياً')
