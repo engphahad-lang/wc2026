@@ -36,6 +36,7 @@ export default function AdminPage() {
  const [savingTournament, setSavingTournament] = useState(false)
  const [newMatch, setNewMatch] = useState({ team1: '', team2: '', stage: 'r16', date: '', time: '' })
  const [savingMatch, setSavingMatch] = useState(false)
+ const [hideCompleted, setHideCompleted] = useState(true)
  
  async function loadMatches() {
    const { data } = await supabase.from('matches').select('*').order('match_num')
@@ -364,9 +365,9 @@ export default function AdminPage() {
            </section>
  
            <section>
-             <h2 className="text-gold font-bold mb-3">✅ نتائج مُدخلة ({played.length})</h2>
+             <h2 className="text-gold font-bold mb-3 flex items-center justify-between"><span>✅ نتائج مُدخلة ({played.length})</span><button onClick={() => setHideCompleted(!hideCompleted)} className="text-xs px-3 py-1 rounded-full bg-white/10 text-white/60">{hideCompleted ? '👁 إظهار' : '🙈 إخفاء'}</button></h2>
              <div className="space-y-2">
-               {played.map(match => {
+               {!hideCompleted && played.map(match => {
                  const r = getResult(match)
                  const isKnockout = match.stage !== 'group'
                  return (
@@ -771,4 +772,3 @@ export default function AdminPage() {
    </div>
  )
 }
- 
