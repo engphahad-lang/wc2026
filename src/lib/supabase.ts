@@ -5,7 +5,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
-// Admin client (uses service role key - server side only)
 export function createAdminClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,12 +17,14 @@ export type Match = {
   id: number; match_num: number; stage: string; group_name: string | null
   team1: string; team2: string; kickoff_utc: string
   score1: number | null; score2: number | null; scorer: string | null
+  qualifier: string | null
   is_locked: boolean
 }
 export type Prediction = {
   id: number; participant_id: number; match_id: number
   pred_score1: number; pred_score2: number; pred_scorer: string | null
-  pts_result: number; pts_scorer: number; total_pts: number
+  pred_qualifier: string | null
+  pts_result: number; pts_scorer: number; pts_qualifier: number; total_pts: number
 }
 export type LeaderboardRow = {
   id: number; name: string; prev_pts: number
