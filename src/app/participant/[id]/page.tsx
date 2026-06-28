@@ -79,7 +79,11 @@ export default function ParticipantPage() {
     }
 
     if (existing) {
-      await supabase.from('predictions').update(payload).eq('id', existing.id)
+      await supabase.from('predictions').update({
+  ...payload,
+  updated_at: new Date().toISOString()
+}).eq('id', existing.id)
+
     } else {
       await supabase.from('predictions').insert(payload)
     }
