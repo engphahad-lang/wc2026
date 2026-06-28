@@ -56,10 +56,11 @@ export function calcPoints(
     else if (Math.sign(pred1-pred2) === Math.sign(act1-act2)) pts_result = 1
   } else {
     if (pred1 === act1 && pred2 === act2) {
-      pts_result = 6
-    } else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) {
-      pts_result = 3
-    }
+  pts_result = 6
+} else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) {
+  pts_result = 1
+}
+
     // نقاط المتأهل
     if (predQualifier && actQualifier) {
       const pq = predQualifier.trim().toLowerCase()
