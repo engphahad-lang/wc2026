@@ -141,7 +141,7 @@ export default function TodayPage() {
                                </td>
                                <td className="py-2 px-2 text-center text-xs">
                                  {isKnockout ? (
-                                   pred?.pred_qualifier ? (
+                                   isDraw && pred?.pred_qualifier ? (
                                      <span className={`font-bold ${
                                        match.qualifier && pred.pred_qualifier === match.qualifier
                                          ? 'text-emerald-400'
@@ -185,4 +185,3 @@ export default function TodayPage() {
    </div>
  )
 }
- 
