@@ -1,4 +1,4 @@
-'use client'
+طلب'use client'
 import { useState, useEffect } from 'react'
 import { supabase, type Match, type Participant, type Prediction } from '@/lib/supabase'
 import { formatKuwaitTime, isLocked } from '@/lib/utils'
@@ -132,8 +132,7 @@ export default function TodayPage() {
                                <td className="py-2 px-2 font-bold text-xs">{p.name}</td>
                                <td className="py-2 px-2 text-center">
                                  {pred ? (
-                                   <span className="bg-navy px-2 py-0.5 rounded-lg font-black text-gold text-sm">
-                                     {pred.pred_score1}-{pred.pred_score2}
+                                   <span className="bg-navy px-2 py-0.5 rounded-lg font-black text-gold text-{pred.pred_score2}-{pred.pred_score1}
                                    </span>
                                  ) : (
                                    <span className="text-white/20 text-xs">—</span>
