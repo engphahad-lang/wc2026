@@ -19,7 +19,7 @@ export default function AdminPage() {
  const [authed, setAuthed]   = useState(false)
  const [matches, setMatches] = useState<Match[]>([])
  const [participants, setParticipants] = useState<Participant[]>([])
- const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string; qualifier: string }>>({})
+ const [results, setResults] = useState<Record<number, { s1: string; s2: string; scorer: string; qualifier: string; assist: string; card: string }>>({})
  const [saving, setSaving]   = useState<Record<number, boolean>>({})
  const [msg, setMsg]         = useState('')
  const [activeTab, setActiveTab] = useState<'results' | 'predictions' | 'manual' | 'tournament' | 'setup'>('results')
@@ -92,13 +92,16 @@ export default function AdminPage() {
      return
    }
    const isKnockout = match.stage !== 'group'
+   const isLateKnockout = match.stage === 'sf' || match.stage === 'final'
    setSaving(prev => ({ ...prev, [match.id]: true }))
  
    const { error: matchError } = await supabase.from('matches')
      .update({
        score1: s1, score2: s2,
-       scorer: !isKnockout ? (r.scorer || null) : null,
-       qualifier: isKnockout ? (r.qualifier || null) : null
+       scorer: r.scorer || null,
+       qualifier: isKnockout ? (r.qualifier || null) : null,
+       assist: isLateKnockout ? (r.assist || null) : null,
+       card: isLateKnockout ? (r.card || null) : null,
      })
      .eq('id', match.id)
  
@@ -114,7 +117,9 @@ export default function AdminPage() {
        const pts = calcPoints(
          p.pred_score1, p.pred_score2, s1, s2,
          p.pred_scorer || '', r.scorer || '', match.stage,
-         p.pred_qualifier || '', r.qualifier || ''
+         p.pred_qualifier || '', r.qualifier || '',
+         p.pred_assist || '', r.assist || '',
+         p.pred_card || '', r.card || ''
        )
        return { id: p.id, ...pts }
      })
@@ -123,6 +128,9 @@ export default function AdminPage() {
          pts_result: u.pts_result,
          pts_scorer: u.pts_scorer,
          pts_qualifier: u.pts_qualifier,
+         pts_assist: u.pts_assist,
+         pts_card: u.pts_card,
+         pts_bonus: u.pts_bonus,
          total_pts: u.total_pts
        }).eq('id', u.id)
      }
@@ -193,6 +201,8 @@ export default function AdminPage() {
      s2: match.score2 !== null ? String(match.score2) : '',
      scorer: match.scorer || '',
      qualifier: match.qualifier || '',
+     assist: (match as any).assist || '',
+     card: (match as any).card || '',
    }
  }
  
@@ -351,26 +361,40 @@ export default function AdminPage() {
                      <div className="flex items-center gap-1 font-bold text-sm">
                        <span className="flex-1 text-right">{match.team1}</span>
                        <input type="number" min="0" max="20" value={r.s1}
-                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), s1: e.target.value}}))}
+                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), s1: e.target.value}}))}
                          className="score-input" placeholder="0" />
                        <span className="text-white/30">-</span>
                        <input type="number" min="0" max="20" value={r.s2}
-                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), s2: e.target.value}}))}
+                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), s2: e.target.value}}))}
                          className="score-input" placeholder="0" />
                        <span className="flex-1">{match.team2}</span>
                      </div>
-                     {!isKnockout && (
+                     {(!isKnockout || match.stage === 'r16' || match.stage === 'qf' || match.stage === 'sf' || match.stage === 'final') && (
                        <input type="text" value={r.scorer}
-                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), scorer: e.target.value}}))}
-                         placeholder="مسجلو الأهداف"
+                         onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), scorer: e.target.value}}))}
+                         placeholder="مسجل الهدف"
                          className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
                        />
+                     )}
+                     {(match.stage === 'sf' || match.stage === 'final') && (
+                       <>
+                         <input type="text" value={r.assist}
+                           onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), assist: e.target.value}}))}
+                           placeholder="صانع الهدف"
+                           className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
+                         />
+                         <input type="text" value={r.card}
+                           onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), card: e.target.value}}))}
+                           placeholder="لاعب البطاقة"
+                           className="w-full bg-navy border border-white/20 rounded-xl py-2 px-3 text-sm outline-none focus:border-gold"
+                         />
+                       </>
                      )}
                      {isKnockout && (
                        <div className="flex gap-2 items-center">
                          <span className="text-xs text-white/50 flex-shrink-0">🏆 المتأهل:</span>
                          <select value={r.qualifier}
-                           onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:''}), qualifier: e.target.value}}))}
+                           onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:'',s2:'',scorer:'',qualifier:'',assist:'',card:''}), qualifier: e.target.value}}))}
                            className="flex-1 bg-navy border border-white/20 focus:border-gold rounded-xl py-2 px-3 text-sm text-white outline-none appearance-none">
                            <option value="">— اختر المتأهل —</option>
                            <option value={match.team1}>{match.team1}</option>
@@ -395,6 +419,7 @@ export default function AdminPage() {
                {!hideCompleted && played.map(match => {
                  const r = getResult(match)
                  const isKnockout = match.stage !== 'group'
+                 const isLateKnockout = match.stage === 'sf' || match.stage === 'final'
                  return (
                    <div key={match.id} className="card py-2 px-3 space-y-2">
                      <div className="flex items-center gap-2 text-sm">
@@ -405,28 +430,41 @@ export default function AdminPage() {
                      </div>
                      {match.scorer && <div className="text-xs text-white/30 text-center">⚽ {match.scorer}</div>}
                      {match.qualifier && <div className="text-xs text-white/30 text-center">🏆 {match.qualifier}</div>}
+                     {(match as any).assist && <div className="text-xs text-white/30 text-center">🎯 {(match as any).assist}</div>}
+                     {(match as any).card && <div className="text-xs text-white/30 text-center">🟨 {(match as any).card}</div>}
                      <details className="group">
                        <summary className="text-xs text-white/30 cursor-pointer hover:text-white/60">تعديل النتيجة</summary>
                        <div className="mt-2 space-y-2">
                          <div className="flex items-center gap-1">
                            <input type="number" min="0" max="20" value={r.s1}
-                             onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), s1: e.target.value}}))}
+                             onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), s1: e.target.value}}))}
                              className="score-input" />
                            <span className="text-white/30">-</span>
                            <input type="number" min="0" max="20" value={r.s2}
-                             onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), s2: e.target.value}}))}
+                             onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), s2: e.target.value}}))}
                              className="score-input" />
-                           {!isKnockout && (
-                             <input type="text" value={r.scorer}
-                               onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||''}), scorer: e.target.value}}))}
-                               className="flex-1 bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
-                           )}
                          </div>
+                         <input type="text" value={r.scorer}
+                           onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), scorer: e.target.value}}))}
+                           placeholder="مسجل الهدف"
+                           className="w-full bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
+                         {isLateKnockout && (
+                           <>
+                             <input type="text" value={r.assist}
+                               onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), assist: e.target.value}}))}
+                               placeholder="صانع الهدف"
+                               className="w-full bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
+                             <input type="text" value={r.card}
+                               onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:match.scorer||'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), card: e.target.value}}))}
+                               placeholder="لاعب البطاقة"
+                               className="w-full bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs outline-none" />
+                           </>
+                         )}
                          {isKnockout && (
                            <div className="flex gap-2 items-center">
                              <span className="text-xs text-white/50">🏆 المتأهل:</span>
                              <select value={r.qualifier}
-                               onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:'',qualifier:match.qualifier||''}), qualifier: e.target.value}}))}
+                               onChange={e => setResults(prev => ({ ...prev, [match.id]: {...(prev[match.id]||{s1:String(match.score1),s2:String(match.score2),scorer:'',qualifier:match.qualifier||'',assist:(match as any).assist||'',card:(match as any).card||''}), qualifier: e.target.value}}))}
                                className="flex-1 bg-navy border border-white/20 rounded-xl py-1.5 px-2 text-xs text-white outline-none appearance-none">
                                <option value="">— اختر المتأهل —</option>
                                <option value={match.team1}>{match.team1}</option>
