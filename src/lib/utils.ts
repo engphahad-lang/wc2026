@@ -39,42 +39,81 @@ export function getTimeUntilLock(kickoffUtc: string): string {
  return `${m} دقيقة`
 }
  
+function matchesText(a?: string, b?: string): boolean {
+ if (!a || !b) return false
+ const x = a.trim().toLowerCase()
+ const y = b.trim().toLowerCase()
+ if (!x || !y) return false
+ return x.includes(y) || y.includes(x)
+}
+ 
 export function calcPoints(
  pred1: number, pred2: number,
  act1: number, act2: number,
  predScorer: string, actScorer: string,
  stage: string,
- predQualifier?: string, actQualifier?: string
-): { pts_result: number; pts_scorer: number; pts_qualifier: number; total_pts: number } {
+ predQualifier?: string, actQualifier?: string,
+ predAssist?: string, actAssist?: string,
+ predCard?: string, actCard?: string
+): {
+ pts_result: number
+ pts_scorer: number
+ pts_qualifier: number
+ pts_assist: number
+ pts_card: number
+ pts_bonus: number
+ total_pts: number
+} {
  const isGroup = stage === 'group'
+ const isLateKnockout = stage === 'sf' || stage === 'final'
+ const isEarlyKnockout = stage === 'r16' || stage === 'qf'
+ 
  let pts_result = 0
  let pts_scorer = 0
  let pts_qualifier = 0
+ let pts_assist = 0
+ let pts_card = 0
+ let pts_bonus = 0
  
  if (isGroup) {
    if (pred1 === act1 && pred2 === act2) pts_result = 3
-   else if (Math.sign(pred1-pred2) === Math.sign(act1-act2)) pts_result = 1
+   else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) pts_result = 1
+ 
+   if (matchesText(predScorer, actScorer)) pts_scorer = 3
  } else {
-   if (pred1 === act1 && pred2 === act2) {
+   // كل أدوار الإقصاء (r32, r16, qf, sf, final)
+   const exactResult = pred1 === act1 && pred2 === act2
+   if (exactResult) {
      pts_result = 6
    } else if (Math.sign(pred1 - pred2) === Math.sign(act1 - act2)) {
      pts_result = 1
    }
  
-   // نقاط المتأهل - تُحسب فقط إذا كان توقع المشارك تعادل (pred1 === pred2)
+   // نقاط المتأهل - فقط إذا توقع المشارك تعادل
    const predictedDraw = pred1 === pred2
-   if (predictedDraw && predQualifier && actQualifier) {
-     const pq = predQualifier.trim().toLowerCase()
-     const aq = actQualifier.trim().toLowerCase()
-     if (pq && aq && (aq.includes(pq) || pq.includes(aq))) pts_qualifier = 3
+   if (predictedDraw && matchesText(predQualifier, actQualifier)) {
+     pts_qualifier = 3
+   }
+ 
+   // مسجل الهدف، صانع الهدف، لاعب البطاقة - فقط لدور 16 وما بعده
+   if (isEarlyKnockout || isLateKnockout) {
+     if (matchesText(predScorer, actScorer)) pts_scorer = 3
+   }
+ 
+   // صانع الهدف ولاعب البطاقة - فقط نصف النهائي والنهائي
+   if (isLateKnockout) {
+     if (matchesText(predAssist, actAssist)) pts_assist = 3
+     if (matchesText(predCard, actCard)) pts_card = 3
+   }
+ 
+   // البونص - فقط دور 16 وربع النهائي، عند نتيجة كاملة صحيحة + مسجل صحيح
+   if (isEarlyKnockout && exactResult && pts_scorer === 3) {
+     pts_bonus = 3
    }
  }
  
- if (isGroup && predScorer && actScorer) {
-   const p = predScorer.trim().toLowerCase()
-   const a = actScorer.trim().toLowerCase()
-   if (p && a && (a.includes(p) || p.includes(a))) pts_scorer = 3
- }
+ const total_pts = pts_result + pts_scorer + pts_qualifier + pts_assist + pts_card + pts_bonus
  
- return { pts_result, pts_scorer, pts_qualifier, total_pts: pts_result + pts_scorer + pts_qualifier }
+ return { pts_result, pts_scorer, pts_qualifier, pts_assist, pts_card, pts_bonus, total_pts }
 }
+ 
