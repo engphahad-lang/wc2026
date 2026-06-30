@@ -80,19 +80,33 @@ export default function AdminPage() {
  
  async function saveResult(match: Match) {
    const r = results[match.id]
-   if (!r) return
+   if (!r || r.s1 === '' || r.s2 === '') {
+     setMsg('⚠️ الرجاء إدخال النتيجة قبل الحفظ')
+     setTimeout(() => setMsg(''), 3000)
+     return
+   }
    const s1 = parseInt(r.s1), s2 = parseInt(r.s2)
-   if (isNaN(s1) || isNaN(s2)) return
+   if (isNaN(s1) || isNaN(s2)) {
+     setMsg('⚠️ النتيجة غير صحيحة')
+     setTimeout(() => setMsg(''), 3000)
+     return
+   }
    const isKnockout = match.stage !== 'group'
    setSaving(prev => ({ ...prev, [match.id]: true }))
  
-   await supabase.from('matches')
+   const { error: matchError } = await supabase.from('matches')
      .update({
        score1: s1, score2: s2,
        scorer: !isKnockout ? (r.scorer || null) : null,
        qualifier: isKnockout ? (r.qualifier || null) : null
      })
      .eq('id', match.id)
+ 
+   if (matchError) {
+     setMsg(`❌ خطأ في حفظ النتيجة: ${matchError.message}`)
+     setSaving(prev => ({ ...prev, [match.id]: false }))
+     return
+   }
  
    const { data: preds } = await supabase.from('predictions').select('*').eq('match_id', match.id)
    if (preds && preds.length > 0) {
@@ -113,7 +127,7 @@ export default function AdminPage() {
        }).eq('id', u.id)
      }
    }
-   setMsg(`✅ تم حفظ نتيجة مباراة ${match.match_num} وتحديث النقاط`)
+   setMsg(`✅ تم حفظ نتيجة مباراة ${match.match_num} (${s1}-${s2}) وتحديث النقاط`)
    setSaving(prev => ({ ...prev, [match.id]: false }))
    setTimeout(() => window.location.reload(), 1500)
  }
